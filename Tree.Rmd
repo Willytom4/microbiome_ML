@@ -1,0 +1,398 @@
+---
+title: "Classification"
+author: "Masum Billah"
+date: "2026-05-28"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### K-Nearest Neighbors (KNN)
+```{r}
+library(MASS)
+set.seed(1234)
+
+#sample sizes for the three categories 1, 2, and 3:
+
+n=50
+n1=n
+n2=n
+n3=n
+#means for the three categories
+mu_x1=10
+mu_y1=10
+mu_x2=30
+mu_y2=30
+mu_x3=10
+mu_y3=30
+sd0=60 #SD
+
+#generate values for sample 1:
+d1=mvrnorm(n1,mu=c(mu_x1,mu_y1),Sigma=sd0*diag(2))
+d2=mvrnorm(n2,mu=c(mu_x2,mu_y2),Sigma=sd0*diag(2))
+d3=mvrnorm(n3,mu=c(mu_x3,mu_y3),Sigma=sd0*diag(2))
+dd=rbind(d1,d2,d3)
+dd=cbind(dd,c(rep(1,n1),rep(2,n2),rep(3,n3)))
+plot(dd[,1:2],col=dd[,3],xlab="X1",ylab="X2",main="Sample Data",pch=16)
+legend("bottomright",c("category 1","category 2","category 3"),col=1:3,pch=16)
+
+newpoint=c(10,16)
+
+plot(dd[,1:2],col=dd[,3],xlab="X1",ylab="X2",main="Sample Data",pch=16)
+points(newpoint[1],newpoint[2],pch=19,col=5,cex=2)
+legend("bottomright",c("category 1","category 2","category 3","new point"),col=c(1:3,5),pch=c(16,16,16,1))
+
+
+my_knn <- function(tdat, npoint, K){
+  distvec=sqrt((npoint[1]-tdat[,1])^2+(npoint[2]-tdat[,2])^2)
+  return(names(sort(table(tdat[order(distvec),3][1:K]), decreasing=T)[1]))
+}
+
+newpoint=c(-5,-5)
+my_knn(dd, newpoint, 5)
+
+```
+
+
+# Decision Tree
+## Building the tree
+
+There are numerous algorithms for building trees. The basic steps are  
+
+1. Start with all variables at the root node.  
+2. Try all variables and select the one that best separates the classes.  
+3. Divide the data according to the rule determined in step 2.  
+4. Repeat 2,3 recursively until a stopping criterion is reached.  
+5. Apply class labels to the leaf nodes by majority vote.  
+
+## Criterion for selecting the best variable to split on
+
+The obvious criterion for choosing the best variable to split on is classification error rate. Since class is predicted by majority vote, this means that the classification error rate is simply the proportion of training observations in the split region that are not of the majority class. The error rate $E_{mn}$ when in region $m$ of the sample space (where regions correspond to tree splits) is
+
+
+$$E_m=1-\max_{k}(\hat{\rho}_{mk})$$
+
+
+Where $\hat{\rho}_{km}$ is the proportion of observations in the region $m$ that belong to class $k$.  We then calculate $E_m$ across regions. The split that produces the lowest $E_m$'s is the best one.
+
+However, it turns out that the error rate is not sufficiently sensitive for tree building. Instead, a commonly used criterion is the **Ginni index**:
+
+$$G_m=\sum_{k=1}^{K}\hat{\rho}_{mk}(1-\hat{\rho}_{mk})=1-\sum_{k=1}^{K}\hat{\rho}_{mk}^2$$
+
+This has its maximum when $\hat{\rho}_{ik}=0.5$ and minimum when $\hat{\rho}_{ik}$ is one or zero. 
+
+
+The Gini index for a split is the weighted average of the two regions produced by the splits:
+
+$$G_{split}=\frac{n_1}{n}G_1+\frac{n2}{n}G_2$$
+
+$n_1$ and $n_2$ are the number of points on each side of the spit, $n=n_1+n_2$, and $G_1$ and $G_2$ are the Gini indexes for the regions created by the split. 
+
+
+### Algorithm for choosing the split
+
+Here is the basic algorithm:
+**loop x over remaining predictors**  
+**{**  
+&nbsp;&nbsp;&nbsp;&nbsp;**loop c over values of split point for x**  
+&nbsp;&nbsp;&nbsp;&nbsp;**{**  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**Calculate and store the Gini index for two regions made by (x,c)**  
+&nbsp;&nbsp;&nbsp;&nbsp;**}**  
+**}**  
+
+**optimal (x,c) is the one that produces the smallest Gini index. Take x as the variable and c as the boundary for the split for that variable.**
+
+
+A common choice for the sequence of values to check at the split points is the midpoints between the values of variable `x` for each pair of data points.
+
+
+```{r}
+# Tree
+set.seed((299))
+library(MASS)
+n=100
+x=mvrnorm(n,mu=c(10,10),Sigma=matrix(c(1,0,0,1),nrow=2))
+class=ifelse(x[,1]+rnorm(n,sd=0.25)>10,1,2)
+plot(x,col=ifelse(class==1,"red","green"),pch=19)
+
+dat = data.frame(x, class)
+
+calcGini <- function(dat, x, y, b){
+  
+  class = dat[, y]
+  
+  n = nrow(dat)
+  
+  # left node probabilities
+  p11 = sum(class[dat[,x] <= b] == 1) / sum(dat[,x] <= b)
+  p21 = sum(class[dat[,x] <= b] == 2) / sum(dat[,x] <= b)
+  
+  # right node probabilities
+  p12 = sum(class[dat[,x] > b] == 1) / sum(dat[,x] > b)
+  p22 = sum(class[dat[,x] > b] == 2) / sum(dat[,x] > b)
+  
+  # gini impurities
+  G1 = 1 - p11^2 - p21^2
+  G2 = 1 - p12^2 - p22^2
+  
+  # node sizes
+  n1 = sum(dat[,x] <= b)
+  n2 = n - n1
+  
+  # weighted impurity
+  GSX1 = (n1/n)*G1 + (n2/n)*G2
+  
+  return(GSX1)
+}
+
+x = 1 
+y = 3
+b = 10
+
+calcGini(dat, x, y, b)
+
+
+bvals <- function(z){
+  zvals = sort(z)
+  return(head(zvals, -1) + diff(zvals)/2)
+}
+
+
+z = c(2,5,8)
+bvals(z)
+
+
+find_split <- function(dat, predcol, y){
+  Ginivals = matrix(NA, nrow = nrow(dat)-1, ncol = length(predcol))
+  j = 0
+
+  for (pc in predcol){
+    j = j + 1
+    
+    bvec = bvals(dat[, pc])
+    
+    i = 0
+    for(b in bvec){
+      i = i + 1
+      Ginivals[i, j] = calcGini(dat, pc, y, b)
+    }
+  }
+  
+  minind = which(Ginivals == min(Ginivals, na.rm = TRUE), arr.ind = TRUE)
+  
+  best_col_index = minind[1, 2]
+  bestvar = predcol[best_col_index]
+  
+  best_b_index = minind[1, 1]
+  bestbound = bvals(dat[, bestvar])[best_b_index]
+  
+  return(list(
+    "best variable to split on" = bestvar,
+    "best split point" = bestbound,
+    "minimum Gini" = min(Ginivals, na.rm = TRUE)
+  ))
+}
+
+find_split(dat = dat, predcol = 1:2, y = 3)
+
+
+
+#########
+
+set.seed(299)
+n = 30
+x = matrix(rnorm(n*2), ncol = 2)
+y = ifelse((x[,1] > 0.3) & (x[,2] > 0.3), 1, 2)
+
+plot(
+  x,
+  col = ifelse(y == 1, "red", "black"),
+  pch = 16,
+  main = "Dataset"
+)
+
+# Create dataframe
+dat = data.frame(
+  X1 = x[,1],
+  X2 = x[,2],
+  class = y
+)
+
+# Apply find_split
+fs = find_split(
+  dat = dat,
+  predcol = 1:2,
+  y = 3
+)
+
+fs
+
+```
+
+
+
+
+```{r, message=FALSE}
+### Read data
+library(tidyverse)
+library(readxl)
+
+#data = read_csv("./Data_Feces2025.xlsx")
+dt_feces =  read_excel("./Data_Feces2025.xlsx", sheet = 2)
+dt_rumen = read_excel("./Data_Rumen2025.xlsx", sheet = 2)
+sum(colnames(dt_feces) %in% colnames(dt_rumen))
+# dt_combined <- rbind(dt_feces, dt_rumen) 
+dt_combined <- dplyr::bind_rows(dt_feces, dt_rumen)
+#dt_combined <- dt_combined[, colSums(dt_combined != 0, na.rm = TRUE) > 0]
+dt_combined <- dt_combined[, colSums(dt_combined != 0) > 0]
+head(dt_combined)   
+```
+
+### Prepare the dataset for training and testing
+```{r}
+set.seed(1)
+
+clean_data = dplyr::select(dt_combined, -starts_with("UnidentifiedFamily"))
+
+X_insample = clean_data[, 16:ncol(clean_data)]
+y_insample = as.factor(clean_data$RFIClass)
+
+idx <- sample(1:nrow(X_insample), 0.8 * nrow(X_insample))
+
+train.X <- X_insample[idx, ]
+test.X  <- X_insample[-idx, ]
+y_train <- y_insample[idx]
+y_test  <- y_insample[-idx]
+```
+
+
+## knn function in R
+```{r,message=FALSE}
+library(class)
+X = X_insample
+y = y_insample
+#knn.predk1=knn(train.X, test.X, Direction.train, k=1)
+knn.predk1=knn(X, X, y, k=1)
+```
+The output from `knn` is the predicted categories for the test data:
+
+```{r}
+knn.predk1[1:30]
+```
+
+Make a table of the predicted versus actual test values:
+
+```{r}
+table(knn.predk1, y)
+mean(knn.predk1 == y)
+```
+
+Repeat with `k=3`:
+
+```{r}
+knn.predk3=knn(X, X, y, k=3)
+table(knn.predk3,y)
+mean(knn.predk3==y)
+```
+
+
+
+```{r}
+knn.predk1=knn(train.X, test.X, y_train, k=1)
+table(knn.predk1, y_test)
+mean(knn.predk1==y_test)
+```
+
+```{r}
+knn.predk1=knn(train.X, test.X, y_train, k=3)
+table(knn.predk1, y_test)
+mean(knn.predk1==y_test)
+```
+
+
+
+```{r}
+library(tree)
+train_df <- data.frame(y = y_train, train.X)
+test_df  <- data.frame(test.X)
+tree.fit = tree(y ~ ., data = train_df)
+
+plot(tree.fit) #display the tree structure
+text(tree.fit,pretty=0) #display the node labels, "pretty=0" includes the category names for any qualitative predictors
+```
+This shows full details of the tree:
+
+```{r}
+tree.fit
+```
+
+This displays the split criterion, the number of observations in that branch, the deviance, the overall prediction for the branch (Yes or No), and the fraction of observations in that branch that take on values of Yes and No.
+
+
+The tree has a 14% error rate:
+
+```{r}
+summary(tree.fit)
+```
+
+
+Now we test the tree on the test data:  
+
+```{r}
+tree.pred = predict(tree.fit,  newdata = test_df, type="class")
+table(tree.pred, y_test)
+```
+
+```{r}
+mean(tree.pred==y_test)
+```
+
+### Pruning 
+
+The basic method above will add all of the variables into the tree. However, this will often produce overfitting. The function `cv.tree()` performs cross-validation in order to determine the optimal level of tree complexity; cost complexity pruning is used in order to select a sequence of trees for consideration. We use the argument `FUN=prune.misclass` in order to indicate that we want the classification error rate to guide the cross-validation and pruning process, rather than the default for the `cv.tree()` function, which is deviance. The `cv.tree()` function reports the number of terminal nodes of each tree considered (size) as well as the corresponding error rate and the value of the cost-complexity parameter used.
+
+
+
+```{r,fig.width=4,fig.height=4}
+set.seed(1)
+cv.fit = cv.tree(tree.fit, FUN=prune.misclass)
+names(cv.fit)
+cv.fit
+```
+Despite the name, `dev` corresponds to the cross-validation error rate in this instance. 
+
+Here is a plot of error rate versus the number of terminal nodes:
+
+```{r,fig.width=4,fig.height=4}
+plot(cv.fit$size, cv.fit$dev,type="b")
+```
+
+The tree with 1, 13, and 14 terminal nodes results in the lowest cross-validation error rate.
+
+Now, we prune the classification tree to 9 nodes:
+
+```{r,fig.width=8,fig.height=8}
+prune.fit = prune.misclass(tree.fit, best=13) #pruned tree
+plot(prune.fit)
+text(prune.fit,pretty=0)
+```
+
+Use the pruned tree to predict the categories for the test data:
+
+
+```{r}
+# predict class labels
+tree.pred = predict(prune.fit, newdata = test.dat, type = "class")
+
+# confusion matrix
+table(tree.pred, y_test)
+
+# accuracy
+mean(tree.pred == y_test)
+```
+
+
